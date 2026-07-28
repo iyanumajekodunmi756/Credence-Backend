@@ -1,17 +1,39 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════
+ * IMPORTANT — env var defaults MUST be set before the dynamic
+ * import of schemas below. The import chain eventually reaches
+ * src/db/pool.ts which calls loadConfig() at module scope, and
+ * that call requires DB_URL, REDIS_URL, and JWT_SECRET to be
+ * present. Without these defaults, the script crashes when run
+ * in CI (GitHub Actions for fork PRs uses the base repo's workflow
+ * file, which doesn't set these vars).
+ * ═══════════════════════════════════════════════════════════════════
+ */
+process.env.DB_URL ??= 'postgresql://user:pass@localhost:5432/credence_test';
+process.env.REDIS_URL ??= 'redis://localhost:6379';
+process.env.JWT_SECRET ??= 'test-jwt-secret-32-characters-long!';
+
 import { extendZodWithOpenApi, OpenAPIRegistry, OpenApiGeneratorV3 } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
+import yaml from 'yaml';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Must call extendZodWithOpenApi BEFORE any .openapi() usage.
+// In the original code this was a side-effect of the static
+// schemas import (via src/schemas/openapi.ts); with the dynamic
+// import below we call it explicitly here.
+extendZodWithOpenApi(z);
 
 // Generic OpenAPI-friendly schema for endpoints where contract is not modeled
 // with zod in this repository.
 const anyObjectSchema = z.object({}).passthrough().openapi('AnyObject');
 
-import yaml from 'yaml';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import * as schemas from '../src/schemas/index.js';
+// Dynamic import so env var defaults above are available before the
+// module-scope loadConfig() call inside db/pool.ts is triggered.
+const schemas = await import('../src/schemas/index.js');
 
-extendZodWithOpenApi(z);
 const registry = new OpenAPIRegistry();
 
 // Register reusable component schemas
